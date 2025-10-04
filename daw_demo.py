@@ -69,6 +69,8 @@ def demo_studio_effects():
     print("This demo will apply professional audio effects:")
     print("  • Compression (dynamic range control)")
     print("  • Parametric EQ (frequency shaping)")
+    print("  • High Pass Filter (remove low frequencies, with intensity control)")
+    print("  • Low Pass Filter (remove high frequencies, with intensity control)")
     print("  • Reverb (space simulation)")
     print("  • Delay/Echo (time-based effect)")
     print("  • Chorus (modulation effect)")

@@ -2,7 +2,7 @@
 DAW EFFECTS MODULE
 ------------------
 Professional audio effects commonly found in DAWs like Ableton, Logic, etc.
-Includes compression, EQ, reverb, delay, chorus, and more.
+Includes compression, EQ, high/low pass filters, reverb, delay, chorus, and more.
 """
 
 import numpy as np
@@ -344,6 +344,90 @@ def apply_gate(y, sr, threshold_db=-40, attack_time=0.001, release_time=0.1):
     return gated
 
 
+def apply_highpass_filter(y, sr, cutoff_freq=1000, order=4, filter_type='butterworth', mix=1.0):
+    """
+    Apply high pass filter to remove low frequencies.
+    
+    Args:
+        y (np.array): Audio data
+        sr (int): Sample rate
+        cutoff_freq (float): Cutoff frequency in Hz
+        order (int): Filter order (higher = steeper slope)
+        filter_type (str): 'butterworth', 'chebyshev1', 'chebyshev2', 'elliptic'
+        mix (float): Filter intensity (0.0 = no effect, 1.0 = full effect)
+        
+    Returns:
+        np.array: High-pass filtered audio
+    """
+    nyquist = sr / 2
+    norm_cutoff = cutoff_freq / nyquist
+    
+    # Ensure cutoff is within valid range
+    norm_cutoff = np.clip(norm_cutoff, 0.001, 0.999)
+    
+    if filter_type == 'butterworth':
+        b, a = signal.butter(order, norm_cutoff, btype='high')
+    elif filter_type == 'chebyshev1':
+        b, a = signal.cheby1(order, 1, norm_cutoff, btype='high')  # 1dB ripple
+    elif filter_type == 'chebyshev2':
+        b, a = signal.cheby2(order, 40, norm_cutoff, btype='high')  # 40dB stopband
+    elif filter_type == 'elliptic':
+        b, a = signal.ellip(order, 1, 40, norm_cutoff, btype='high')
+    else:
+        raise ValueError(f"Unknown filter type: {filter_type}")
+    
+    # Apply filter using filtfilt for zero-phase filtering
+    filtered = signal.filtfilt(b, a, y)
+    
+    # Apply mix control (blend between original and filtered)
+    if mix < 1.0:
+        filtered = (1 - mix) * y + mix * filtered
+    
+    return filtered
+
+
+def apply_lowpass_filter(y, sr, cutoff_freq=5000, order=4, filter_type='butterworth', mix=1.0):
+    """
+    Apply low pass filter to remove high frequencies.
+    
+    Args:
+        y (np.array): Audio data
+        sr (int): Sample rate
+        cutoff_freq (float): Cutoff frequency in Hz
+        order (int): Filter order (higher = steeper slope)
+        filter_type (str): 'butterworth', 'chebyshev1', 'chebyshev2', 'elliptic'
+        mix (float): Filter intensity (0.0 = no effect, 1.0 = full effect)
+        
+    Returns:
+        np.array: Low-pass filtered audio
+    """
+    nyquist = sr / 2
+    norm_cutoff = cutoff_freq / nyquist
+    
+    # Ensure cutoff is within valid range
+    norm_cutoff = np.clip(norm_cutoff, 0.001, 0.999)
+    
+    if filter_type == 'butterworth':
+        b, a = signal.butter(order, norm_cutoff, btype='low')
+    elif filter_type == 'chebyshev1':
+        b, a = signal.cheby1(order, 1, norm_cutoff, btype='low')  # 1dB ripple
+    elif filter_type == 'chebyshev2':
+        b, a = signal.cheby2(order, 40, norm_cutoff, btype='low')  # 40dB stopband
+    elif filter_type == 'elliptic':
+        b, a = signal.ellip(order, 1, 40, norm_cutoff, btype='low')
+    else:
+        raise ValueError(f"Unknown filter type: {filter_type}")
+    
+    # Apply filter using filtfilt for zero-phase filtering
+    filtered = signal.filtfilt(b, a, y)
+    
+    # Apply mix control (blend between original and filtered)
+    if mix < 1.0:
+        filtered = (1 - mix) * y + mix * filtered
+    
+    return filtered
+
+
 def apply_stereo_widener(y, width=1.5):
     """
     Apply stereo widening effect (requires stereo input).
@@ -448,6 +532,18 @@ def create_daw_effects_showcase(audio_path, output_dir="output", save=True):
     print("🚪  Applying gate...")
     effects['gated'] = apply_gate(y, sr, threshold_db=-40)
     
+    print("🔊  Applying high pass filter...")
+    effects['highpass'] = apply_highpass_filter(y, sr, cutoff_freq=200, order=4, mix=1.0)
+    
+    print("🔇  Applying low pass filter...")
+    effects['lowpass'] = apply_lowpass_filter(y, sr, cutoff_freq=8000, order=4, mix=1.0)
+    
+    print("🎛️  Applying subtle high pass filter...")
+    effects['highpass_subtle'] = apply_highpass_filter(y, sr, cutoff_freq=100, order=2, mix=0.3)
+    
+    print("🎛️  Applying subtle low pass filter...")
+    effects['lowpass_subtle'] = apply_lowpass_filter(y, sr, cutoff_freq=12000, order=2, mix=0.3)
+    
     # Save files
     if save:
         print("\n💾  Saving effects...")
@@ -458,17 +554,17 @@ def create_daw_effects_showcase(audio_path, output_dir="output", save=True):
     
     # Visualize
     print("\n📊  Creating visualization...")
-    plt.figure(figsize=(16, 12))
+    plt.figure(figsize=(16, 16))
     
     # Plot original
-    plt.subplot(5, 2, 1)
+    plt.subplot(7, 2, 1)
     librosa.display.waveshow(y, sr=sr)
     plt.title("Original")
     plt.ylabel("Amplitude")
     
     # Plot effects
     for i, (name, effect) in enumerate(effects.items(), 2):
-        plt.subplot(5, 2, i)
+        plt.subplot(7, 2, i)
         librosa.display.waveshow(effect, sr=sr)
         plt.title(name.replace('_', ' ').title())
         plt.ylabel("Amplitude")

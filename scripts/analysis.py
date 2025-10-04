@@ -2,37 +2,71 @@
 ANALYSIS MODULE
 ---------------
 Advanced audio analysis tools including spectrum analysis, beat detection, and metering.
+
+This module provides beginner-friendly functions to analyze audio files and understand
+their properties like frequency content, rhythm, loudness, and more.
+
+Key Concepts for Beginners:
+- Spectrum Analysis: Shows which frequencies are present in audio
+- Beat Detection: Finds the rhythm and tempo of music
+- Loudness Metering: Measures how loud different parts of audio are
+- Frequency Distribution: Shows energy across different frequency bands
+- Phase Correlation: Measures stereo compatibility
+
+Author: Q.Wave Team
 """
 
-import numpy as np
-import librosa
-import librosa.display
-import matplotlib.pyplot as plt
-from scipy import signal
+# Import necessary libraries for audio processing and visualization
+import numpy as np          # For numerical operations and arrays
+import librosa             # Main audio processing library
+import librosa.display     # For audio visualization
+import matplotlib.pyplot as plt  # For creating plots and graphs
+from scipy import signal   # For signal processing functions
 
 
 def spectrum_analyzer(y, sr, frame_size=2048, hop_length=512):
     """
     Real-time style spectrum analyzer.
     
+    This function analyzes the frequency content of audio over time, similar to
+    what you see in audio software like Audacity or professional audio analyzers.
+    
+    What it does:
+    1. Takes small chunks of audio (frames) and analyzes their frequency content
+    2. Shows which frequencies are present and how strong they are
+    3. Creates a "spectrogram" - a visual representation of frequencies over time
+    
     Args:
-        y (np.array): Audio data
-        sr (int): Sample rate
-        frame_size (int): FFT frame size
-        hop_length (int): Hop length
+        y (np.array): Audio data (the actual sound samples)
+        sr (int): Sample rate (how many samples per second, usually 44100 Hz)
+        frame_size (int): Size of each analysis window (2048 samples = ~46ms at 44.1kHz)
+        hop_length (int): How much to move forward between frames (512 samples = ~12ms)
         
     Returns:
         tuple: (frequencies, times, spectrum)
+            - frequencies: Array of frequency values in Hz
+            - times: Array of time points in seconds
+            - spectrum: 2D array showing frequency strength over time (in dB)
     """
-    # Compute STFT
+    # Step 1: Compute Short-Time Fourier Transform (STFT)
+    # This breaks the audio into small time windows and analyzes each window's frequencies
     D = librosa.stft(y, n_fft=frame_size, hop_length=hop_length)
+    
+    # Step 2: Get the magnitude (strength) of each frequency
+    # The STFT gives complex numbers, we only need the magnitude (how strong each frequency is)
     magnitude = np.abs(D)
     
-    # Convert to dB
+    # Step 3: Convert to decibels (dB) for better visualization
+    # Human hearing is logarithmic, so dB scale is more natural
+    # ref=np.max means we use the maximum value as our reference point (0 dB)
     magnitude_db = librosa.amplitude_to_db(magnitude, ref=np.max)
     
-    # Get frequency and time axes
+    # Step 4: Create the frequency axis (which frequencies we're analyzing)
+    # This tells us what frequency each row in our spectrum represents
     frequencies = librosa.fft_frequencies(sr=sr, n_fft=frame_size)
+    
+    # Step 5: Create the time axis (when each analysis window occurred)
+    # This tells us what time each column in our spectrum represents
     times = librosa.frames_to_time(np.arange(magnitude.shape[1]), 
                                    sr=sr, hop_length=hop_length)
     
@@ -43,30 +77,52 @@ def beat_detector(y, sr):
     """
     Detect beats and estimate tempo.
     
+    This function finds the rhythm and tempo of music, similar to how DJ software
+    automatically detects the BPM (Beats Per Minute) of songs.
+    
+    What it does:
+    1. Analyzes the audio to find rhythmic patterns
+    2. Estimates the tempo (speed) of the music
+    3. Finds individual beat locations
+    4. Detects "onsets" - moments when new sounds start
+    
     Args:
-        y (np.array): Audio data
-        sr (int): Sample rate
+        y (np.array): Audio data (the actual sound samples)
+        sr (int): Sample rate (how many samples per second, usually 44100 Hz)
         
     Returns:
-        dict: Beat information
+        dict: Beat information containing:
+            - tempo: Beats per minute (BPM) - how fast the music is
+            - beat_frames: Frame numbers where beats occur
+            - beat_times: Time in seconds where beats occur
+            - onset_times: Time in seconds where new sounds start
+            - onset_envelope: Strength of onsets over time
     """
-    # Estimate tempo
+    # Step 1: Estimate tempo and find beat locations
+    # This is the main beat tracking algorithm that finds the rhythm
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
     
-    # Convert beat frames to time
+    # Step 2: Convert tempo to a simple number if it's an array
+    # Sometimes librosa returns arrays, we want just the number
+    if isinstance(tempo, np.ndarray):
+        tempo = tempo.item()
+    
+    # Step 3: Convert beat frame numbers to actual time in seconds
+    # Beats are initially found as frame numbers, we convert to seconds for easier use
     beat_times = librosa.frames_to_time(beats, sr=sr)
     
-    # Onset detection
-    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-    onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
-    onset_times = librosa.frames_to_time(onsets, sr=sr)
+    # Step 4: Detect onsets (when new sounds start)
+    # Onsets are different from beats - they detect any new sound, not just the main rhythm
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)  # Calculate onset strength over time
+    onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)  # Find onset locations
+    onset_times = librosa.frames_to_time(onsets, sr=sr)  # Convert to seconds
     
     return {
-        'tempo': tempo,
-        'beat_frames': beats,
-        'beat_times': beat_times,
-        'onset_times': onset_times,
-        'onset_envelope': onset_env
+        'tempo': tempo,                    # BPM (e.g., 120 BPM)
+        'beat_frames': beats,              # Frame numbers of beats
+        'beat_times': beat_times,          # Time in seconds of beats
+        'onset_times': onset_times,        # Time in seconds of onsets
+        'onset_envelope': onset_env        # Onset strength over time
     }
 
 
@@ -74,51 +130,68 @@ def loudness_meter(y, sr, meter_type='rms'):
     """
     Measure loudness over time.
     
+    This function measures how loud different parts of audio are, similar to
+    the volume meters you see in audio software or on mixing boards.
+    
+    What it does:
+    1. Analyzes audio in small chunks over time
+    2. Calculates different types of loudness measurements
+    3. Returns statistics about the audio's volume levels
+    
+    Types of loudness measurements:
+    - RMS: Average loudness (like how loud it "feels" to humans)
+    - Peak: Maximum instantaneous loudness (loudest moments)
+    - LUFS: Professional loudness standard (used in broadcasting)
+    
     Args:
-        y (np.array): Audio data
-        sr (int): Sample rate
-        meter_type (str): 'rms', 'peak', or 'lufs'
+        y (np.array): Audio data (the actual sound samples)
+        sr (int): Sample rate (how many samples per second, usually 44100 Hz)
+        meter_type (str): Type of measurement - 'rms', 'peak', or 'lufs'
         
     Returns:
-        dict: Loudness measurements
+        dict: Loudness measurements containing various statistics
     """
-    frame_length = 2048
-    hop_length = 512
+    # Set up analysis parameters
+    frame_length = 2048  # Size of each analysis window (about 46ms at 44.1kHz)
+    hop_length = 512     # How much to move forward between windows (about 12ms)
     
     if meter_type == 'rms':
-        # RMS (Root Mean Square)
+        # RMS (Root Mean Square) - measures average loudness
+        # This is closest to how humans perceive loudness
         rms = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
-        rms_db = librosa.amplitude_to_db(rms, ref=1.0)
+        rms_db = librosa.amplitude_to_db(rms, ref=1.0)  # Convert to decibels
         
         return {
-            'rms': rms,
-            'rms_db': rms_db,
-            'rms_mean': np.mean(rms_db),
-            'rms_max': np.max(rms_db)
+            'rms': rms,                    # RMS values over time
+            'rms_db': rms_db,              # RMS in decibels
+            'rms_mean': np.mean(rms_db),   # Average RMS level
+            'rms_max': np.max(rms_db)      # Maximum RMS level
         }
     
     elif meter_type == 'peak':
-        # Peak levels
+        # Peak levels - measures the loudest instantaneous moments
+        # Useful for preventing clipping and distortion
         frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
-        peak = np.max(np.abs(frames), axis=0)
-        peak_db = librosa.amplitude_to_db(peak, ref=1.0)
+        peak = np.max(np.abs(frames), axis=0)  # Find maximum absolute value in each frame
+        peak_db = librosa.amplitude_to_db(peak, ref=1.0)  # Convert to decibels
         
         return {
-            'peak': peak,
-            'peak_db': peak_db,
-            'peak_max': np.max(peak_db),
-            'peak_mean': np.mean(peak_db)
+            'peak': peak,                  # Peak values over time
+            'peak_db': peak_db,            # Peak levels in decibels
+            'peak_max': np.max(peak_db),   # Maximum peak level
+            'peak_mean': np.mean(peak_db)  # Average peak level
         }
     
     elif meter_type == 'lufs':
-        # Simplified LUFS calculation
-        # (Note: This is a simplified version; proper LUFS requires K-weighting)
+        # LUFS (Loudness Units relative to Full Scale) - professional loudness standard
+        # Used in broadcasting and streaming (like Netflix, Spotify)
+        # Note: This is a simplified version; proper LUFS requires K-weighting
         rms = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
-        lufs_approx = -0.691 + 10 * np.log10(np.mean(rms**2))
+        lufs_approx = -0.691 + 10 * np.log10(np.mean(rms**2))  # Simplified LUFS calculation
         
         return {
-            'lufs_integrated': lufs_approx,
-            'lufs_range': np.max(rms) - np.min(rms)
+            'lufs_integrated': lufs_approx,           # Overall loudness in LUFS
+            'lufs_range': np.max(rms) - np.min(rms)  # Dynamic range
         }
 
 
@@ -126,46 +199,61 @@ def frequency_distribution(y, sr, n_bands=10):
     """
     Analyze frequency distribution across bands.
     
+    This function divides the audio spectrum into frequency bands (like bass, mid, treble)
+    and shows how much energy is in each band. It's like an EQ analyzer that shows
+    which frequency ranges are most prominent in the audio.
+    
+    What it does:
+    1. Analyzes the frequency content of the audio
+    2. Divides frequencies into bands (like bass, midrange, treble)
+    3. Calculates how much energy is in each band
+    4. Returns normalized results showing the balance of frequencies
+    
     Args:
-        y (np.array): Audio data
-        sr (int): Sample rate
-        n_bands (int): Number of frequency bands
+        y (np.array): Audio data (the actual sound samples)
+        sr (int): Sample rate (how many samples per second, usually 44100 Hz)
+        n_bands (int): Number of frequency bands to divide into (default: 10)
         
     Returns:
-        dict: Frequency band energies
+        dict: Frequency band analysis containing:
+            - band_names: Names of each frequency band (e.g., "20-200 Hz")
+            - band_energies: Normalized energy in each band (0-1)
+            - band_edges: Frequency boundaries of each band
     """
-    # Compute spectrogram
-    D = librosa.stft(y)
-    magnitude = np.abs(D)
+    # Step 1: Compute spectrogram (frequency analysis over time)
+    D = librosa.stft(y)  # Short-Time Fourier Transform
+    magnitude = np.abs(D)  # Get magnitude (strength) of each frequency
     
-    # Define frequency bands (logarithmically spaced)
-    freq_bins = librosa.fft_frequencies(sr=sr, n_fft=2048)
-    band_edges = np.logspace(np.log10(20), np.log10(sr/2), n_bands + 1)
+    # Step 2: Define frequency bands using logarithmic spacing
+    # Human hearing is logarithmic, so we use log spacing for more natural bands
+    freq_bins = librosa.fft_frequencies(sr=sr, n_fft=2048)  # All frequency bins
+    band_edges = np.logspace(np.log10(20), np.log10(sr/2), n_bands + 1)  # Band boundaries
     
-    # Calculate energy in each band
-    band_energies = []
-    band_names = []
+    # Step 3: Calculate energy in each frequency band
+    band_energies = []  # Will store energy for each band
+    band_names = []     # Will store names for each band
     
     for i in range(n_bands):
-        low = band_edges[i]
-        high = band_edges[i + 1]
+        low = band_edges[i]      # Lower frequency of this band
+        high = band_edges[i + 1] # Upper frequency of this band
         
-        # Find frequency bins in this band
+        # Find which frequency bins belong to this band
         band_mask = (freq_bins >= low) & (freq_bins < high)
         
-        # Sum energy in band
+        # Sum up all the energy in this frequency band
         band_energy = np.sum(magnitude[band_mask, :])
         band_energies.append(band_energy)
-        band_names.append(f"{low:.0f}-{high:.0f} Hz")
+        band_names.append(f"{low:.0f}-{high:.0f} Hz")  # Create readable band name
     
-    # Normalize
+    # Step 4: Normalize the energies so they sum to 1
+    # This makes it easy to see the relative importance of each band
     band_energies = np.array(band_energies)
     band_energies = band_energies / np.sum(band_energies)
     
     return {
-        'band_names': band_names,
-        'band_energies': band_energies,
-        'band_edges': band_edges
+        'band_names': band_names,      # Names like "20-200 Hz", "200-2000 Hz", etc.
+        'band_energies': band_energies, # Normalized energy (0-1) in each band
+        'band_edges': band_edges       # Frequency boundaries of each band
     }
 
 
