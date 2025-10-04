@@ -3,6 +3,7 @@ MULTIMEDIA PROCESSING PLAYGROUND - MAIN SCRIPT
 -----------------------------------------------
 A collection of tools for manipulating audio, video, and images.
 This script orchestrates the various multimedia processing functions.
+Hello Moto
 """
 
 import sys
